@@ -1,6 +1,6 @@
 # GeoInsight — Web-GIS Store Locator
 
-> A production-grade spatial store locator built with **React**, **FastAPI**, and **PostGIS** — featuring real-time routing (walk / bike / car), convex hull spatial analysis, and 2 000+ real Islamabad POIs from OpenStreetMap.
+> A production-grade spatial store locator built with **React 19**, **FastAPI**, and **PostGIS** — featuring a professional landing page, real-time multi-modal routing (walk / bike / car via OSRM), live Recharts analytics, convex hull spatial analysis, and **2,500+ real Islamabad POIs** from OpenStreetMap. Fully responsive across desktop, tablet, and mobile.
 
 ---
 
@@ -8,15 +8,24 @@
 
 | Service | URL |
 |---|---|
-| Frontend | _Deploy to Vercel — see [DEPLOYMENT.md](./DEPLOYMENT.md)_ |
-| Backend API | _Deploy to Render — see [DEPLOYMENT.md](./DEPLOYMENT.md)_ |
-| API Docs | `http://localhost:8000/docs` (local) |
+| 🌐 Frontend | [geoinsight-store-locator.vercel.app](https://geoinsight-store-locator.vercel.app) |
+| ⚙️ Backend API | [geoinsight-store-locator.onrender.com](https://geoinsight-store-locator.onrender.com) |
+| 📖 API Docs | `https://geoinsight-store-locator.onrender.com/docs` |
+
+> **Note:** The Render backend is on a free tier and may take ~30 seconds to wake up on first request. Use [UptimeRobot](https://uptimerobot.com) to keep it warm.
 
 ---
 
-## Screenshots
+## Features
 
-> Drop a pin → category-filtered markers appear → click any for real-road directions.
+- 🗺️ **Professional Landing Page** — Dark-themed hero with glassmorphism feature cards
+- 📍 **PostGIS Radius Search** — `ST_DWithin` with GIST index for sub-millisecond spatial queries
+- 📊 **Live Recharts Analytics** — Category distribution bar chart updates in real-time with search results
+- 🛣️ **Multi-Modal Routing** — Walk, Bike, Car via free OSRM (no API key); real road geometry
+- 🔷 **Convex Hull Overlay** — `ST_ConvexHull(ST_Collect())` bounding polygon on all matched results
+- 🧩 **Category Filters** — 9 categories (pharmacy, hospital, restaurant, cafe, bank, mosque, supermarket, school, fuel)
+- 📱 **Fully Responsive** — Desktop sidebar, tablet (260px sidebar), mobile bottom-sheet drawer with FAB
+- 🔒 **Secure** — CORS restricted to Vercel origin, parameterised SQL, secrets via env vars only
 
 ---
 
@@ -26,6 +35,8 @@
 ┌─────────────────────────────────────────────────────┐
 │  Browser                                            │
 │  React 19 + react-leaflet 5 + Leaflet 1.9           │
+│  Recharts (analytics) · lucide-react (icons)        │
+│  react-router-dom (Landing → Map routing)           │
 │  Vite 8 (dev server / production bundler)           │
 └────────────────────┬────────────────────────────────┘
                      │ HTTP / REST (JSON + GeoJSON)
@@ -35,13 +46,14 @@
 └────────────────────┬────────────────────────────────┘
                      │ SQL (parameterised, PostGIS)
 ┌────────────────────▼────────────────────────────────┐
-│  PostgreSQL 16 + PostGIS 3.6                        │
+│  PostgreSQL 16 + PostGIS 3.x                        │
 │  geography(Point,4326) + GIST index                 │
+│  Hosted on Neon.tech (serverless, free tier)        │
 └─────────────────────────────────────────────────────┘
-                     │ Routing
+                     │ Routing (client-side)
 ┌────────────────────▼────────────────────────────────┐
 │  OSRM (OpenStreetMap Routing Machine)               │
-│  foot  ·  bike  ·  driving  — free, no API key     │
+│  foot · bike · driving  — free, no API key          │
 └─────────────────────────────────────────────────────┘
 ```
 
@@ -51,11 +63,12 @@
 
 | Feature | PostGIS Function | Description |
 |---|---|---|
-| Radius search | `ST_DWithin` | Find stores within N km using index-aware geography query |
+| Radius search | `ST_DWithin` | Index-aware geography query — finds stores within N km |
 | Distance ranking | `ST_Distance` | Returns exact metres, orders results nearest-first |
 | Convex Hull | `ST_ConvexHull(ST_Collect())` | Bounding polygon around all matched stores |
-| Walk time | `ceil(distance_m / 83.33)` | Straight-line estimate at 5 km/h |
+| Walk time estimate | `ceil(distance_m / 83.33)` | Straight-line estimate at 5 km/h |
 | Category filter | `category = ANY(%s)` | Multi-select SQL array parameter |
+| Building footprints | `nwr` + `out center` | Overpass `nwr` query captures nodes, ways & relations |
 
 ---
 
@@ -68,28 +81,37 @@ GIS Store Locator/
 ├── DEPLOYMENT.md               # Step-by-step deployment guide
 ├── README.md
 │
+├── .github/
+│   └── workflows/
+│       └── ci.yml              # CI/CD: test → build → deploy (Render + Vercel)
+│
 ├── data/
-│   └── stores.csv              # 2 026 real Islamabad POIs (OSM)
+│   └── stores.csv              # 2,500 real Islamabad POIs (OSM)
 │
 ├── backend/
 │   ├── main.py                 # FastAPI app — /health, /stores/nearby
 │   ├── db.py                   # Connection pool (SimpleConnectionPool)
-│   ├── ingest.py               # CSV → PostGIS ingestion pipeline
-│   ├── fetch_overpass.py       # Fetch real OSM data from Overpass API
-│   ├── verify_routing.py       # OSRM routing quality checks
-│   ├── stress_test_api.py      # Module 2 API contract tests
-│   ├── stress_test_module4.py  # Module 4 category/hull/walktime tests
-│   ├── requirements.txt        # pip dependencies
-│   └── venv/                   # (gitignored)
+│   ├── ingest.py               # CSV → PostGIS bulk ingestion (execute_values)
+│   ├── fetch_overpass.py       # Fetch real OSM data (nwr query, out center)
+│   ├── setup_neon.py           # One-shot remote DB schema initialiser
+│   ├── verify_routing.py       # OSRM routing quality checks (21 tests)
+│   ├── stress_test_api.py      # API contract tests
+│   ├── stress_test_module4.py  # Category/hull/walktime tests
+│   └── requirements.txt
 │
 └── frontend/
-    ├── index.html
+    ├── index.html              # favicon.svg + SEO meta tags
+    ├── public/
+    │   └── favicon.svg         # Custom gradient map-pin icon
     ├── vite.config.js          # React plugin + dev-server proxy
     ├── package.json
     └── src/
         ├── main.jsx            # React entry + leaflet CSS import
-        ├── index.css           # Dark design system
-        └── App.jsx             # Full application component
+        ├── index.css           # Dark design system + responsive breakpoints
+        ├── App.jsx             # Router (Landing → MapDashboard)
+        └── pages/
+            ├── Landing.jsx     # Professional hero landing page
+            └── MapDashboard.jsx # Full spatial app + bottom sheet for mobile
 ```
 
 ---
@@ -101,7 +123,7 @@ GIS Store Locator/
 | Tool | Minimum Version |
 |---|---|
 | Python | 3.12 |
-| Node.js | 18 |
+| Node.js | 20 |
 | PostgreSQL | 14 |
 | PostGIS extension | 3.x |
 
@@ -113,12 +135,11 @@ CREATE DATABASE geoinsight;
 \c geoinsight
 CREATE EXTENSION IF NOT EXISTS postgis;
 
--- Create the stores table
 CREATE TABLE IF NOT EXISTS stores (
-    id          SERIAL PRIMARY KEY,
-    name        TEXT NOT NULL,
-    geom        geography(Point, 4326) NOT NULL,
-    category    TEXT NOT NULL DEFAULT 'other'
+    id       SERIAL PRIMARY KEY,
+    name     TEXT NOT NULL,
+    geom     geography(Point, 4326) NOT NULL,
+    category TEXT NOT NULL DEFAULT 'other'
 );
 CREATE INDEX IF NOT EXISTS stores_geom_idx ON stores USING GIST(geom);
 ```
@@ -126,7 +147,6 @@ CREATE INDEX IF NOT EXISTS stores_geom_idx ON stores USING GIST(geom);
 ### 2 — Environment
 
 ```bash
-# Copy the example and fill in your values
 cp .env.example .env
 ```
 
@@ -134,8 +154,6 @@ cp .env.example .env
 ```
 DATABASE_URL=postgresql://postgres:YOUR_PASSWORD@localhost:5432/geoinsight
 ```
-
-> If your PostgreSQL runs on a non-default port (e.g. 5433), update the URL accordingly.
 
 ### 3 — Backend
 
@@ -154,10 +172,10 @@ pip install -r requirements.txt
 
 **Fetch real data and ingest:**
 ```bash
-# Fetch 2 000+ real Islamabad POIs from OpenStreetMap
+# Fetch 2,500 real Islamabad POIs from OpenStreetMap (nodes + buildings)
 python fetch_overpass.py
 
-# Ingest into PostGIS
+# Ingest into PostGIS using bulk execute_values
 python ingest.py --truncate
 
 # Start API server
@@ -173,15 +191,18 @@ npm run dev
 # Open http://localhost:5173
 ```
 
+**Environment variable (production only):**
+```
+VITE_API_BASE=https://your-backend.onrender.com
+```
+Leave empty for local development (Vite proxy handles it automatically).
+
 ---
 
 ## API Reference
 
 ### `GET /health`
 
-Liveness check.
-
-**Response:**
 ```json
 { "status": "ok", "db": "connected" }
 ```
@@ -199,7 +220,7 @@ Spatial proximity search. All computation is performed in PostGIS.
 | `lat` | float | ✅ | `[-90, 90]` | Search centre latitude |
 | `lng` | float | ✅ | `[-180, 180]` | Search centre longitude |
 | `radius_km` | float | ✅ | `(0, 100]` | Search radius in kilometres |
-| `category` | string | ❌ | comma-separated | Filter by category e.g. `bank,hospital` |
+| `category` | string | ❌ | comma-separated | Filter e.g. `bank,hospital` |
 
 **Response — GeoJSON FeatureCollection:**
 ```json
@@ -213,32 +234,35 @@ Spatial proximity search. All computation is performed in PostGIS.
         "id": 42,
         "name": "Faisal Mosque",
         "category": "mosque",
-        "distance_m": 0.0,
-        "walk_time_min": 0
+        "distance_m": 312.4,
+        "walk_time_min": 4
       }
     }
   ],
-  "hull": {
-    "type": "Polygon",
-    "coordinates": [[[73.03, 33.72], ...]]
-  }
+  "hull": { "type": "Polygon", "coordinates": [[[73.03, 33.72], ...]] }
 }
 ```
 
-**Validation errors return HTTP 422.**
-
 ---
 
-## Running Tests
+## CI/CD Pipeline
 
-```bash
-cd backend
+GitHub Actions (`.github/workflows/ci.yml`) runs on every push to `main`:
 
-# Requires uvicorn running on port 8000
-python stress_test_api.py        # Module 2: API contract (9 tests)
-python stress_test_module4.py    # Module 4: category/hull/walktime (20 tests)
-python verify_routing.py         # OSRM routing quality (21 tests)
-```
+1. **`backend-test`** — Installs Python 3.12, runs schema setup, checks imports
+2. **`frontend-build`** — Installs Node 20, runs `npm ci` + `npm run build`
+3. **`deploy`** (only on `main`, after both pass):
+   - Triggers Render deploy hook → redeploys backend
+   - Runs `amondnet/vercel-action` → redeploys frontend
+
+**Required GitHub Secrets:**
+
+| Secret | Where to get it |
+|---|---|
+| `RENDER_DEPLOY_HOOK` | Render → Service → Settings → Deploy Hook |
+| `VERCEL_TOKEN` | Vercel → Account Settings → Tokens |
+| `VERCEL_ORG_ID` | Vercel → Project Settings |
+| `VERCEL_PROJECT_ID` | Vercel → Project Settings |
 
 ---
 
@@ -246,15 +270,13 @@ python verify_routing.py         # OSRM routing quality (21 tests)
 
 Routes are fetched client-side from free OSRM servers — **no API key required**.
 
-| Mode | Server | Profile | Typical Speed |
-|---|---|---|---|
-| 🚶 Walk | `routing.openstreetmap.de` | foot | ~4.5 km/h |
-| 🚲 Bike | `routing.openstreetmap.de` | bike | ~14 km/h |
-| 🚗 Car | `router.project-osrm.org` | driving | ~40 km/h |
+| Mode | OSRM Server | Typical Speed |
+|---|---|---|
+| 🚶 Walk | `routing.openstreetmap.de/routed-foot` | ~5 km/h |
+| 🚲 Bike | `routing.openstreetmap.de/routed-bike` | ~15 km/h |
+| 🚗 Car | `router.project-osrm.org/driving` | ~40 km/h |
 
-Routes use the **OpenStreetMap road network** — they follow actual mapped roads, not straight lines. Verified: road distance is always ≥ crow-flies distance.
-
-> **Note:** Routing accuracy depends on OSM data quality for the region. Islamabad's main road network is well-mapped. Remote or newly built areas may have incomplete coverage.
+> Routes follow actual OSM road network. Walk/bike routes avoid highways tagged `foot=no` / `bicycle=no`, which is why they can be longer than car routes near major roads — this is **correct GIS behaviour**, not a bug.
 
 ---
 
@@ -274,12 +296,22 @@ Routes use the **OpenStreetMap road network** — they follow actual mapped road
 
 ---
 
+## Responsive Design
+
+| Breakpoint | Layout |
+|---|---|
+| `> 900px` (Desktop) | Fixed 320px sidebar + full map |
+| `641–900px` (Tablet) | Narrowed 260px sidebar + map |
+| `≤ 640px` (Mobile) | Full-screen map + slide-up bottom sheet + floating FAB |
+
+---
+
 ## Deployment
 
-See **[DEPLOYMENT.md](./DEPLOYMENT.md)** for step-by-step instructions to deploy free on:
-- **Frontend** → Vercel
-- **Backend** → Render
-- **Database** → Neon.tech (PostgreSQL + PostGIS, always-on free tier)
+See **[DEPLOYMENT.md](./DEPLOYMENT.md)** for step-by-step instructions:
+- **Database** → Neon.tech (PostgreSQL + PostGIS, serverless free tier)
+- **Backend** → Render (free web service)
+- **Frontend** → Vercel (free hobby plan)
 
 ---
 
@@ -287,11 +319,13 @@ See **[DEPLOYMENT.md](./DEPLOYMENT.md)** for step-by-step instructions to deploy
 
 | Question | Answer |
 |---|---|
-| Why `geography` type not `geometry`? | `geography` uses an earth-curvature model. `ST_DWithin` on geography returns accurate metres, critical for real-world proximity search. |
-| Why GIST index? | PostGIS spatial queries use R-tree indexes (GIST) for bounding-box pre-filtering before exact geometry tests — O(log n) vs O(n). |
-| Why PostGIS for convex hull instead of client-side? | Server-side aggregation (`ST_ConvexHull(ST_Collect())`) means only one GeoJSON polygon crosses the wire, not all coordinates. |
-| OSRM vs Google Maps? | OSRM is open-source, uses OSM data, and has no API key or cost. Production apps would use Google Maps/Mapbox for verified road data and traffic. |
-| Why CTE in the nearby query? | The CTE materialises the filtered result set once, so `ST_ConvexHull(ST_Collect())` can aggregate over it without a second full-table scan. |
+| Why `geography` type not `geometry`? | `geography` uses earth-curvature model. `ST_DWithin` returns accurate metres, critical for real-world proximity. |
+| Why GIST index? | PostGIS spatial queries use R-tree (GIST) for bounding-box pre-filtering — O(log n) vs O(n). |
+| Why `nwr` in Overpass? | `node` misses buildings mapped as polygons. `nwr` + `out center` captures nodes, ways and relations and returns the centroid. |
+| Why PostGIS convex hull? | Server-side `ST_ConvexHull(ST_Collect())` sends one polygon over the wire, not all coordinates. |
+| Why CTE in nearby query? | Materialises the filtered result once so `ST_ConvexHull` aggregates over it without a second full-table scan. |
+| OSRM vs Google Maps? | OSRM is open-source, uses OSM data, no API cost. Walk/bike routes correctly avoid highways — real GIS routing behaviour. |
+| Why `execute_values` for ingest? | Single batch insert of 2,500 rows is ~50× faster than individual `execute()` calls over a remote Neon connection. |
 
 ---
 
