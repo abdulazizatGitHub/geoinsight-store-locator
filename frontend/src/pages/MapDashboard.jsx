@@ -77,6 +77,7 @@ export default function App() {
   const [routeLoading, setRouteLoading] = useState(false)
   const [error, setError]               = useState(null)
   const [geoStatus, setGeoStatus]       = useState(null)
+  const [sheetOpen, setSheetOpen]       = useState(false)
 
   // Route state
   const [selectedStore, setSelectedStore] = useState(null)  // feature
@@ -211,162 +212,203 @@ export default function App() {
     count: stores.filter(s => s.properties.category === cat).length
   })).filter(d => d.count > 0).sort((a, b) => b.count - a.count)
 
+  // ── Shared panel content (used in both sidebar and bottom sheet) ───────────
+  const panelContent = (
+    <>
+      {/* Controls */}
+      <div className="controls">
+        <div className="control-group">
+          <span className="control-label">Search Radius</span>
+          <div className="radius-row">
+            <input type="range" min={1} max={20} step={1} value={radiusKm}
+              onChange={e => setRadiusKm(Number(e.target.value))} />
+            <span className="radius-badge">{radiusKm} km</span>
+          </div>
+        </div>
+        <div className="control-group" style={{ flexDirection: 'row', gap: '8px' }}>
+          <button className="btn btn-primary" onClick={handleUseMyLocation} disabled={loading}>📍 GPS</button>
+          <button className="btn btn-secondary" onClick={handleClear} disabled={!searchCenter}>✕ Clear</button>
+        </div>
+        {geoStatus && <div className={`status-msg status-${geoStatus.type}`}>{geoStatus.msg}</div>}
+        {error     && <div className="status-msg status-error">⚠ {error}</div>}
+        {!searchCenter && !geoStatus && <div className="status-msg status-info">Tap the map to drop a pin</div>}
+      </div>
+
+      {/* Category pills */}
+      <div className="results-header" style={{ paddingBottom: '8px' }}>
+        <span className="results-title">Filter by Category</span>
+        {activeCats.length > 0 && (
+          <button className="filter-pill active" style={{ fontSize: '0.6rem' }}
+            onClick={() => setActiveCats([])}>Clear</button>
+        )}
+      </div>
+      <div className="filters-container">
+        {ALL_CATEGORIES.map(cat => (
+          <button key={cat} className={`filter-pill ${activeCats.includes(cat) ? 'active' : ''}`}
+            onClick={() => toggleCategory(cat)}>
+            {CAT_EMOJIS[cat]} {cat}
+          </button>
+        ))}
+      </div>
+
+      {/* Live stats */}
+      {searchCenter && (
+        <div className="stats-panel">
+          <div className="stat-card">
+            <span className="stat-label">Found</span>
+            <span className="stat-value">{stores.length}</span>
+          </div>
+          <div className="stat-card">
+            <span className="stat-label">Nearest</span>
+            <span className="stat-value">{nearestStore ? fmtDist(nearestStore.properties.distance_m) : '—'}</span>
+          </div>
+          <div className="stat-card">
+            <span className="stat-label">Avg Walk</span>
+            <span className="stat-value">{avgWalk ? `${avgWalk} min` : '—'}</span>
+          </div>
+          <div className="stat-card">
+            <span className="stat-label">Hull</span>
+            <span className="stat-value">{hull ? 'Computed' : 'N/A'}</span>
+          </div>
+        </div>
+      )}
+
+      {/* Analytics Chart */}
+      {searchCenter && chartData.length > 0 && (
+        <div className="chart-container">
+          <div className="route-title" style={{ marginBottom: '8px' }}>Category Distribution</div>
+          <ResponsiveContainer width="100%" height={120}>
+            <BarChart data={chartData} margin={{ top: 5, right: 5, left: -20, bottom: 5 }}>
+              <XAxis dataKey="name" tick={{ fontSize: 10, fill: 'var(--text-muted)' }} tickLine={false} axisLine={false} />
+              <YAxis tick={{ fontSize: 10, fill: 'var(--text-muted)' }} tickLine={false} axisLine={false} />
+              <Tooltip
+                cursor={{ fill: 'rgba(255,255,255,0.05)' }}
+                contentStyle={{ backgroundColor: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '8px', fontSize: '12px' }}
+              />
+              <Bar dataKey="count" radius={[4, 4, 0, 0]}>
+                {chartData.map((entry, index) => (
+                  <Cell key={`cell-${index}`} fill={CATEGORY_COLORS[entry.name] || '#94a3b8'} />
+                ))}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      )}
+
+      {/* Route panel */}
+      {selectedStore && (
+        <div className="route-panel">
+          <div className="route-title">
+            <span>Directions to</span>
+            <button className="route-close" onClick={() => { setSelectedStore(null); setRouteGeo(null); setRouteInfo(null) }}>✕</button>
+          </div>
+          <div className="route-dest">{selectedStore.properties.name}</div>
+          <div className="mode-toggle">
+            {TRAVEL_MODES.map(m => (
+              <button key={m.id}
+                className={`mode-btn ${travelMode === m.id ? 'active' : ''}`}
+                style={travelMode === m.id ? { background: m.color, borderColor: m.color } : {}}
+                onClick={() => setTravelMode(m.id)}>
+                {m.emoji} {m.label}
+              </button>
+            ))}
+          </div>
+          {routeLoading && <div className="status-msg status-info">Calculating route…</div>}
+          {routeInfo && !routeLoading && (
+            <div className="route-result">
+              <div className="route-stat">
+                <span className="stat-label">Road Distance</span>
+                <span className="route-val" style={{ color: activeMode.color }}>{fmtDist(routeInfo.distance_m)}</span>
+              </div>
+              <div className="route-stat">
+                <span className="stat-label">Travel Time</span>
+                <span className="route-val" style={{ color: activeMode.color }}>{fmtTime(routeInfo.duration_s)}</span>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Results list */}
+      <div className="results-header">
+        <span className="results-title">Nearby Stores</span>
+      </div>
+      <div className="results-list">
+        {!searchCenter ? (
+          <div className="empty-state"><div className="icon">🗺️</div><p>Drop a pin to explore.</p></div>
+        ) : stores.length === 0 && !loading ? (
+          <div className="empty-state"><div className="icon">🔍</div><p>No stores found.<br/>Adjust filters or radius.</p></div>
+        ) : (
+          stores.map((feat, i) => {
+            const { name, distance_m, category, walk_time_min } = feat.properties
+            const isActive = selectedStore?.properties?.id === feat.properties.id
+            return (
+              <div key={feat.properties.id}
+                className={`result-item ${isActive ? 'result-active' : ''}`}
+                onClick={() => { handleSelectStore(feat); setSheetOpen(false) }}>
+                <span className="result-rank">{i + 1}</span>
+                <div className={`result-dot marker-${category}`} />
+                <div style={{ flex: 1 }}>
+                  <div className="result-name">{name}</div>
+                  <div className="result-cat">{CAT_EMOJIS[category] || '📍'} {category} · {walk_time_min} min walk</div>
+                </div>
+                <span className="result-dist">{fmtDist(distance_m)}</span>
+              </div>
+            )
+          })
+        )}
+      </div>
+    </>
+  )
+
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
     <div className="app-wrapper">
-      {/* ── Sidebar ── */}
+
+      {/* ── MOBILE: Floating Action Bar (top) ── */}
+      <div className="mobile-fab">
+        <span className="fab-brand">Geo<span>Insight</span></span>
+        <div className="fab-divider" />
+        <button className="fab-btn fab-btn-primary" onClick={handleUseMyLocation} disabled={loading}>📍 GPS</button>
+        {searchCenter && <button className="fab-btn fab-btn-secondary" onClick={handleClear}>✕ Clear</button>}
+      </div>
+
+      {/* ── MOBILE: Sheet toggle button (bottom-centre) ── */}
+      <button
+        className={`sheet-toggle-btn ${stores.length > 0 ? 'has-results' : ''}`}
+        onClick={() => setSheetOpen(true)}>
+        {stores.length > 0 ? (
+          <><span>📋 Results</span><span className="fab-count-badge">{stores.length}</span></>
+        ) : (
+          <span>☰ Explore</span>
+        )}
+      </button>
+
+      {/* ── MOBILE: Sheet overlay backdrop ── */}
+      <div className={`sheet-overlay ${sheetOpen ? 'open' : ''}`} onClick={() => setSheetOpen(false)} />
+
+      {/* ── MOBILE: Bottom Sheet ── */}
+      <div className={`bottom-sheet ${sheetOpen ? 'open' : ''}`}>
+        <div className="sheet-handle-area">
+          <div className="sheet-handle" />
+          <div className="sheet-title-row">
+            <span className="sheet-title">Geo<span>Insight</span></span>
+            <button className="sheet-close-btn" onClick={() => setSheetOpen(false)}>✕</button>
+          </div>
+        </div>
+        <div className="sheet-body">
+          {panelContent}
+        </div>
+      </div>
+
+      {/* ── DESKTOP: Sidebar ── */}
       <aside className="sidebar">
         <div className="sidebar-header">
           <h1>Geo<span>Insight</span></h1>
           <p>PostGIS · OSRM Real-Time Routing</p>
         </div>
-
-        {/* Controls */}
-        <div className="controls">
-          <div className="control-group">
-            <span className="control-label">Search Radius</span>
-            <div className="radius-row">
-              <input type="range" min={1} max={20} step={1} value={radiusKm}
-                onChange={e => setRadiusKm(Number(e.target.value))} />
-              <span className="radius-badge">{radiusKm} km</span>
-            </div>
-          </div>
-          <div className="control-group" style={{ flexDirection: 'row', gap: '8px' }}>
-            <button className="btn btn-primary" onClick={handleUseMyLocation} disabled={loading}>📍 GPS</button>
-            <button className="btn btn-secondary" onClick={handleClear} disabled={!searchCenter}>✕ Clear</button>
-          </div>
-          {geoStatus && <div className={`status-msg status-${geoStatus.type}`}>{geoStatus.msg}</div>}
-          {error     && <div className="status-msg status-error">⚠ {error}</div>}
-          {!searchCenter && !geoStatus && <div className="status-msg status-info">Click the map to drop a pin</div>}
-        </div>
-
-        {/* Category pills */}
-        <div className="results-header" style={{ paddingBottom: '8px' }}>
-          <span className="results-title">Filter by Category</span>
-          {activeCats.length > 0 && (
-            <button className="filter-pill active" style={{ fontSize: '0.6rem' }}
-              onClick={() => setActiveCats([])}>Clear</button>
-          )}
-        </div>
-        <div className="filters-container">
-          {ALL_CATEGORIES.map(cat => (
-            <button key={cat} className={`filter-pill ${activeCats.includes(cat) ? 'active' : ''}`}
-              onClick={() => toggleCategory(cat)}>
-              {CAT_EMOJIS[cat]} {cat}
-            </button>
-          ))}
-        </div>
-
-        {/* Live stats */}
-        {searchCenter && (
-          <div className="stats-panel">
-            <div className="stat-card">
-              <span className="stat-label">Found</span>
-              <span className="stat-value">{stores.length}</span>
-            </div>
-            <div className="stat-card">
-              <span className="stat-label">Nearest</span>
-              <span className="stat-value">{nearestStore ? fmtDist(nearestStore.properties.distance_m) : '—'}</span>
-            </div>
-            <div className="stat-card">
-              <span className="stat-label">Avg Walk</span>
-              <span className="stat-value">{avgWalk ? `${avgWalk} min` : '—'}</span>
-            </div>
-            <div className="stat-card">
-              <span className="stat-label">Hull</span>
-              <span className="stat-value">{hull ? 'Computed' : 'N/A'}</span>
-            </div>
-          </div>
-        )}
-
-        {/* Analytics Chart */}
-        {searchCenter && chartData.length > 0 && (
-          <div className="chart-container">
-            <div className="route-title" style={{ marginBottom: '8px' }}>Category Distribution</div>
-            <ResponsiveContainer width="100%" height={120}>
-              <BarChart data={chartData} margin={{ top: 5, right: 5, left: -20, bottom: 5 }}>
-                <XAxis dataKey="name" tick={{ fontSize: 10, fill: 'var(--text-muted)' }} tickLine={false} axisLine={false} />
-                <YAxis tick={{ fontSize: 10, fill: 'var(--text-muted)' }} tickLine={false} axisLine={false} />
-                <Tooltip
-                  cursor={{ fill: 'rgba(255,255,255,0.05)' }}
-                  contentStyle={{ backgroundColor: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '8px', fontSize: '12px' }}
-                />
-                <Bar dataKey="count" radius={[4, 4, 0, 0]}>
-                  {chartData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={CATEGORY_COLORS[entry.name] || '#94a3b8'} />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        )}
-
-        {/* Route panel — shown when a store is selected */}
-        {selectedStore && (
-          <div className="route-panel">
-            <div className="route-title">
-              <span>Directions to</span>
-              <button className="route-close" onClick={() => { setSelectedStore(null); setRouteGeo(null); setRouteInfo(null) }}>✕</button>
-            </div>
-            <div className="route-dest">{selectedStore.properties.name}</div>
-
-            {/* Travel mode toggle */}
-            <div className="mode-toggle">
-              {TRAVEL_MODES.map(m => (
-                <button key={m.id}
-                  className={`mode-btn ${travelMode === m.id ? 'active' : ''}`}
-                  style={travelMode === m.id ? { background: m.color, borderColor: m.color } : {}}
-                  onClick={() => setTravelMode(m.id)}>
-                  {m.emoji} {m.label}
-                </button>
-              ))}
-            </div>
-
-            {/* Route result */}
-            {routeLoading && <div className="status-msg status-info">Calculating route…</div>}
-            {routeInfo && !routeLoading && (
-              <div className="route-result">
-                <div className="route-stat">
-                  <span className="stat-label">Road Distance</span>
-                  <span className="route-val" style={{ color: activeMode.color }}>{fmtDist(routeInfo.distance_m)}</span>
-                </div>
-                <div className="route-stat">
-                  <span className="stat-label">Travel Time</span>
-                  <span className="route-val" style={{ color: activeMode.color }}>{fmtTime(routeInfo.duration_s)}</span>
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Results list */}
-        <div className="results-header">
-          <span className="results-title">Nearby Stores</span>
-        </div>
-        <div className="results-list">
-          {!searchCenter ? (
-            <div className="empty-state"><div className="icon">🗺️</div><p>Drop a pin to explore.</p></div>
-          ) : stores.length === 0 && !loading ? (
-            <div className="empty-state"><div className="icon">🔍</div><p>No stores found.<br/>Adjust filters or radius.</p></div>
-          ) : (
-            stores.map((feat, i) => {
-              const { name, distance_m, category, walk_time_min } = feat.properties
-              const isActive = selectedStore?.properties?.id === feat.properties.id
-              return (
-                <div key={feat.properties.id}
-                  className={`result-item ${isActive ? 'result-active' : ''}`}
-                  onClick={() => handleSelectStore(feat)}>
-                  <span className="result-rank">{i + 1}</span>
-                  <div className={`result-dot marker-${category}`} />
-                  <div style={{ flex: 1 }}>
-                    <div className="result-name">{name}</div>
-                    <div className="result-cat">{CAT_EMOJIS[category] || '📍'} {category} · {walk_time_min} min walk</div>
-                  </div>
-                  <span className="result-dist">{fmtDist(distance_m)}</span>
-                </div>
-              )
-            })
-          )}
+        <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
+          {panelContent}
         </div>
       </aside>
 
