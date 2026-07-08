@@ -29,10 +29,15 @@ app = FastAPI(
     version='1.0.0',
 )
 
-# CORS — allow all origins for local demo (React dev server on a different port)
+ALLOWED_ORIGINS = [
+    "http://localhost:5173",
+    "http://localhost:5174",
+    "https://geoinsight-store-locator.vercel.app"
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=['*'],
+    allow_origins=ALLOWED_ORIGINS,
     allow_methods=['GET'],
     allow_headers=['*'],
 )
