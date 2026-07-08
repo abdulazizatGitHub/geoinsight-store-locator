@@ -1,0 +1,84 @@
+name: GeoInsight CI
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  backend-test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgis/postgis:16-3.4
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: password
+          POSTGRES_DB: geoinsight
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python 3.12
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.12"
+        cache: 'pip'
+        cache-dependency-path: 'backend/requirements.txt'
+
+    - name: Install backend dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r backend/requirements.txt
+        pip install pytest httpx  # Extra deps for testing
+
+    - name: Setup Database schema
+      env:
+        DATABASE_URL: postgresql://postgres:password@localhost:5432/geoinsight
+      run: |
+        psql $DATABASE_URL -c "
+        CREATE TABLE IF NOT EXISTS stores (
+            id SERIAL PRIMARY KEY,
+            name TEXT NOT NULL,
+            geom geography(Point, 4326) NOT NULL,
+            category TEXT NOT NULL DEFAULT 'other'
+        );
+        CREATE INDEX IF NOT EXISTS stores_geom_idx ON stores USING GIST(geom);"
+
+    # Note: For actual CI, you'd run pytest with httpx hitting the FastAPI app directly.
+    # The current stress_test_*.py scripts require the server to be running.
+    # We can run the OSRM routing verification which doesn't need our DB.
+    - name: Verify OSRM Routing Quality
+      run: |
+        cd backend
+        python verify_routing.py
+
+  frontend-build:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Use Node.js 18
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+        cache-dependency-path: 'frontend/package-lock.json'
+
+    - name: Install frontend dependencies
+      run: |
+        cd frontend
+        npm ci
+
+    - name: Build frontend for production
+      run: |
+        cd frontend
+        npm run build
