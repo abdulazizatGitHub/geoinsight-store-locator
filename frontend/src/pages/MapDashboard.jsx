@@ -96,7 +96,8 @@ export default function App() {
     setRouteInfo(null)
     setSelectedStore(null)
     try {
-      let url = `/stores/nearby?lat=${center.lat}&lng=${center.lng}&radius_km=${radius}`
+      const BASE_URL = import.meta.env.VITE_API_BASE || ''
+      let url = `${BASE_URL}/stores/nearby?lat=${center.lat}&lng=${center.lng}&radius_km=${radius}`
       if (categories.length > 0) url += `&category=${categories.join(',')}`
       const res = await fetch(url)
       if (!res.ok) throw new Error((await res.json()).detail || `HTTP ${res.status}`)
